@@ -1,0 +1,68 @@
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+
+resources:
+- 20-kubernetes/06-clustered-pingfederate
+- ingress/nginx.yaml
+- ingress/ingress.yaml
+
+secretGenerator:
+- files:
+  - conf/licenses/pingfederate.lic
+  name: pingfederate-license
+  type: Opaque
+- name: tls-secret
+  files:
+  - conf/keystore/tls.crt
+  - conf/keystore/tls.key
+  type: kubernetes.io/tls
+
+patchesJson6902:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: pingfederate
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/containers/0/envFrom/1
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - mountPath: /opt/in/instance/server/default/conf/pingfederate.lic
+            name: product-license-volume
+            readOnly: true
+            subPath: pingfederate.lic
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: product-license-volume
+            secret:
+              secretName: pingfederate-license
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: pingfederate-admin
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/containers/0/envFrom/1
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - mountPath: /opt/out
+            name: pingfederate-admin-persistent-config
+            readOnly: false
+          - mountPath: /opt/in/instance/server/default/conf/pingfederate.lic
+            name: product-license-volume
+            readOnly: true
+            subPath: pingfederate.lic
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: pingfederate-admin-persistent-config
+            persistentVolumeClaim:
+              claimName: pingfederate-admin-pvc
+          - name: product-license-volume
+            secret:
+              secretName: pingfederate-license
